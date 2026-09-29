@@ -1,65 +1,149 @@
 import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
-import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import {
+  parseTerraformPlan,
+  calculateCostGuardPlan,
+  generateCliReportText,
+  generateMarkdownReport,
+  sqliteCache,
+  AzureRetailPricingService,
+  simulateSkuSwitch,
+  formatINRText,
+} from './src/server/costguard-engine';
 
 dotenv.config();
 
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ROOT_DIR = process.cwd();
-const CLI_PATH = path.join(ROOT_DIR, 'cli', 'costguard.py');
 const TEST_PLANS_DIR = path.join(ROOT_DIR, 'test-plans');
 
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
 
-  // Helper to run costguard CLI
-  function runCostGuardCli(args: string[], stdinInput?: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    return new Promise((resolve) => {
-      const child = spawn('python3', [CLI_PATH, ...args], {
-        cwd: ROOT_DIR,
-        env: { ...process.env, PYTHONPATH: ROOT_DIR },
-      });
+  // Pure TypeScript CostGuard Execution (No python3 subprocess dependency)
+  async function runCostGuardInProcess(
+    args: string[],
+    stdinInput?: string
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    let planPath: string | null = null;
+    let maxIncrease = 4000.0;
+    let currency = 'INR';
+    let isMarkdown = false;
+    let isJson = false;
+    let isClearCache = false;
+    let includeSpot = false;
 
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      child.on('close', (code) => {
-        resolve({
-          stdout,
-          stderr,
-          exitCode: code ?? 0,
-        });
-      });
-
-      child.on('error', (err) => {
-        stderr += err.message;
-        resolve({
-          stdout,
-          stderr,
-          exitCode: 2,
-        });
-      });
-
-      if (stdinInput) {
-        child.stdin.write(stdinInput);
-        child.stdin.end();
+    // Simple robust CLI arg parser
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if (a === '--plan' || a === '-p') {
+        planPath = args[++i];
+      } else if (a === '--max-increase' || a === '-m') {
+        maxIncrease = parseFloat(args[++i]) || 4000.0;
+      } else if (a === '--currency' || a === '-c') {
+        currency = args[++i] || 'INR';
+      } else if (a === '--markdown') {
+        isMarkdown = true;
+      } else if (a === '--json') {
+        isJson = true;
+      } else if (a === '--clear-cache') {
+        isClearCache = true;
+      } else if (a === '--include-spot') {
+        includeSpot = true;
       }
-    });
+    }
+
+    if (isClearCache) {
+      const deleted = sqliteCache.clear();
+      return {
+        stdout: `[INFO] Cleared ${deleted} entries from CostGuard SQLite pricing cache.\n`,
+        stderr: '',
+        exitCode: 0,
+      };
+    }
+
+    let planRaw = '';
+    if (planPath && planPath !== '-') {
+      const resolved = path.isAbsolute(planPath) ? planPath : path.join(ROOT_DIR, planPath);
+      if (!fs.existsSync(resolved)) {
+        return {
+          stdout: '',
+          stderr: `Error: Terraform plan file '${planPath}' not found.\n`,
+          exitCode: 2,
+        };
+      }
+      try {
+        planRaw = fs.readFileSync(resolved, 'utf-8');
+      } catch (err: any) {
+        return {
+          stdout: '',
+          stderr: `Error reading plan file '${planPath}': ${err.message}\n`,
+          exitCode: 2,
+        };
+      }
+    } else if (stdinInput) {
+      planRaw = stdinInput;
+    } else {
+      return {
+        stdout: '',
+        stderr: 'Error: No plan provided. Specify --plan <file> or pipe Terraform JSON to stdin.\n',
+        exitCode: 2,
+      };
+    }
+
+    if (!planRaw.trim()) {
+      return {
+        stdout: '',
+        stderr: 'Error: Empty Terraform plan received.\n',
+        exitCode: 2,
+      };
+    }
+
+    try {
+      const { parsed, logs } = parseTerraformPlan(planRaw);
+      const pricingService = new AzureRetailPricingService();
+      const analysis = await calculateCostGuardPlan(parsed, {
+        currency,
+        maxIncrease,
+        includeSpot,
+        pricingProvider: pricingService,
+      });
+
+      // Combine parser logs with pricing logs
+      analysis.logs = [...logs, ...analysis.logs];
+
+      if (isJson) {
+        return {
+          stdout: JSON.stringify(analysis, null, 2),
+          stderr: '',
+          exitCode: analysis.policy_verdict.exit_code,
+        };
+      } else if (isMarkdown) {
+        return {
+          stdout: generateMarkdownReport(analysis),
+          stderr: '',
+          exitCode: analysis.policy_verdict.exit_code,
+        };
+      } else {
+        return {
+          stdout: generateCliReportText(analysis),
+          stderr: '',
+          exitCode: analysis.policy_verdict.exit_code,
+        };
+      }
+    } catch (err: any) {
+      return {
+        stdout: '',
+        stderr: `Error parsing Terraform plan: ${err.message}\n`,
+        exitCode: 2,
+      };
+    }
   }
 
   // Health endpoint
@@ -69,6 +153,7 @@ async function startServer() {
       app: 'CostGuard FinOps Guardrail',
       version: '1.0.0',
       timestamp: new Date().toISOString(),
+      runtime: 'Node.js (TypeScript native)',
       capabilities: ['Terraform Plan Analysis', 'Azure Retail API', 'SQLite Cache', 'Circuit Breaker Policy', 'AI Advisor'],
     });
   });
@@ -81,7 +166,6 @@ async function startServer() {
       }
       const files = fs.readdirSync(TEST_PLANS_DIR).filter((f) => f.endsWith('.json'));
       const list = files.map((filename) => {
-        const fullPath = path.join(TEST_PLANS_DIR, filename);
         let description = '';
         if (filename.includes('create')) description = 'Plan A: Create VM Standard_D2s_v3 & Managed Disk';
         else if (filename.includes('delete')) description = 'Plan B: Delete legacy VM Standard_B1s';
@@ -120,7 +204,7 @@ async function startServer() {
     }
   });
 
-  // Main plan analysis endpoint
+  // Main plan analysis endpoint (Native Node.js / TypeScript execution)
   app.post('/api/analyze', async (req: Request, res: Response) => {
     try {
       const { plan, max_increase = 4000, currency = 'INR', include_spot = false } = req.body;
@@ -128,54 +212,31 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing plan payload' });
       }
 
-      const planString = typeof plan === 'string' ? plan : JSON.stringify(plan);
-      const tempPath = path.join(os.tmpdir(), `tfplan-${Date.now()}-${Math.random().toString(36).substring(7)}.json`);
-      fs.writeFileSync(tempPath, planString, 'utf-8');
-
-      const args = ['--plan', tempPath, '--max-increase', String(max_increase), '--currency', currency, '--json'];
-      if (include_spot) args.push('--include-spot');
-
-      const cliResult = await runCostGuardCli(args);
-
+      let parsedChanges: any[];
+      let parserLogs: string[];
       try {
-        fs.unlinkSync(tempPath);
-      } catch {
-        // ignore
-      }
-
-      if (cliResult.exitCode === 2) {
+        const result = parseTerraformPlan(plan);
+        parsedChanges = result.parsed;
+        parserLogs = result.logs;
+      } catch (parseErr: any) {
         return res.status(400).json({
-          error: cliResult.stderr || 'Plan parsing failed (exit code 2)',
-          raw_stderr: cliResult.stderr,
+          error: parseErr.message,
+          raw_stderr: `Error parsing Terraform plan: ${parseErr.message}`,
         });
       }
 
-      let parsedJson: any = {};
-      try {
-        parsedJson = JSON.parse(cliResult.stdout);
-      } catch (err: any) {
-        return res.status(500).json({
-          error: 'Failed to parse CLI output',
-          stdout: cliResult.stdout,
-          stderr: cliResult.stderr,
-        });
-      }
+      const pricingService = new AzureRetailPricingService();
+      const analysis = await calculateCostGuardPlan(parsedChanges, {
+        currency: String(currency),
+        maxIncrease: Number(max_increase),
+        includeSpot: Boolean(include_spot),
+        pricingProvider: pricingService,
+      });
 
-      // Add resource counts
-      const details = parsedJson.resource_details || [];
-      parsedJson.resource_counts = {
-        total_detected: details.length,
-        billable: details.filter((d: any) => d.status !== 'SKIPPED').length,
-        skipped: details.filter((d: any) => d.status === 'SKIPPED').length,
-        creates: details.filter((d: any) => d.action === 'CREATE').length,
-        deletes: details.filter((d: any) => d.action === 'DELETE').length,
-        updates: details.filter((d: any) => d.action === 'UPDATE').length,
-        replacements: details.filter((d: any) => d.action === 'REPLACEMENT').length,
-      };
-
-      res.json(parsedJson);
+      analysis.logs = [...parserLogs, ...analysis.logs];
+      res.json(analysis);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message || 'Internal analysis error' });
     }
   });
 
@@ -185,32 +246,18 @@ async function startServer() {
       const { command, plan_content } = req.body;
       const cmdStr = (command || '').trim();
 
-      // Parse CLI arguments safely
       const parts = cmdStr.split(/\s+/).filter(Boolean);
       if (parts[0] === 'costguard' || parts[0] === './costguard') {
         parts.shift();
       }
 
-      let tempFile: string | null = null;
-      let argsToPass = [...parts];
-
-      // If user piped or didn't supply --plan, use plan_content
-      const hasPlanArg = argsToPass.includes('--plan') || argsToPass.includes('-p');
+      let stdinInput: string | undefined = undefined;
+      const hasPlanArg = parts.includes('--plan') || parts.includes('-p');
       if (!hasPlanArg && plan_content) {
-        tempFile = path.join(os.tmpdir(), `cli-plan-${Date.now()}.json`);
-        fs.writeFileSync(tempFile, typeof plan_content === 'string' ? plan_content : JSON.stringify(plan_content));
-        argsToPass.push('--plan', tempFile);
+        stdinInput = typeof plan_content === 'string' ? plan_content : JSON.stringify(plan_content);
       }
 
-      const result = await runCostGuardCli(argsToPass);
-
-      if (tempFile) {
-        try {
-          fs.unlinkSync(tempFile);
-        } catch {
-          // ignore
-        }
-      }
+      const result = await runCostGuardInProcess(parts, stdinInput);
 
       res.json({
         stdout: result.stdout,
@@ -226,103 +273,51 @@ async function startServer() {
   app.get('/api/pricing/:sku/:region', async (req: Request, res: Response) => {
     const { sku, region } = req.params;
     const currency = (req.query.currency as string) || 'INR';
-    const pyScript = `
-import json, sys
-from backend.app.services.pricing_service import AzureRetailPricingProvider
-provider = AzureRetailPricingProvider()
-res = provider.get_hourly_price('${sku}', '${region}', 'azurerm_virtual_machine', '${currency}')
-print(json.dumps({
-    'sku': res.sku,
-    'region': res.region,
-    'currency': res.currency,
-    'hourly_rate': res.hourly_rate,
-    'monthly_rate': round(res.hourly_rate * 730, 2) if res.hourly_rate else None,
-    'found': res.found,
-    'source': res.source,
-    'meter_name': res.meter_name
-}))
-`;
-    const child = spawn('python3', ['-c', pyScript], {
-      cwd: ROOT_DIR,
-      env: { ...process.env, PYTHONPATH: ROOT_DIR },
-    });
-    let out = '';
-    child.stdout.on('data', (d) => (out += d.toString()));
-    child.on('close', () => {
-      try {
-        res.json(JSON.parse(out));
-      } catch (err: any) {
-        res.status(500).json({ error: 'Pricing lookup failed', details: out });
-      }
-    });
+    try {
+      const provider = new AzureRetailPricingService();
+      const lookup = await provider.getHourlyPrice(sku, region, 'azurerm_virtual_machine', currency);
+      res.json({
+        sku: lookup.sku,
+        region: lookup.region,
+        currency: lookup.currency,
+        hourly_rate: lookup.hourly_rate,
+        monthly_rate: lookup.hourly_rate ? Math.round(lookup.hourly_rate * 730 * 100) / 100 : null,
+        found: lookup.found,
+        source: lookup.source,
+        meter_name: lookup.meter_name,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Pricing lookup failed', details: err.message });
+    }
   });
 
   // Cache stats & clear
   app.get('/api/cache/stats', async (_req: Request, res: Response) => {
-    const pyScript = `
-import json
-from backend.app.database import get_cache_statistics
-print(json.dumps(get_cache_statistics()))
-`;
-    const child = spawn('python3', ['-c', pyScript], {
-      cwd: ROOT_DIR,
-      env: { ...process.env, PYTHONPATH: ROOT_DIR },
-    });
-    let out = '';
-    child.stdout.on('data', (d) => (out += d.toString()));
-    child.on('close', () => {
-      try {
-        res.json(JSON.parse(out));
-      } catch {
-        res.json({ total_entries: 0, oldest_timestamp: null, newest_timestamp: null, entries: [] });
-      }
-    });
+    try {
+      res.json(sqliteCache.getStats());
+    } catch (err: any) {
+      res.json({ total_entries: 0, oldest_timestamp: null, newest_timestamp: null, entries: [] });
+    }
   });
 
   app.delete('/api/cache', async (_req: Request, res: Response) => {
-    const pyScript = `
-import json
-from backend.app.database import clear_cache
-deleted = clear_cache()
-print(json.dumps({'status': 'success', 'deleted': deleted}))
-`;
-    const child = spawn('python3', ['-c', pyScript], {
-      cwd: ROOT_DIR,
-      env: { ...process.env, PYTHONPATH: ROOT_DIR },
-    });
-    let out = '';
-    child.stdout.on('data', (d) => (out += d.toString()));
-    child.on('close', () => {
-      try {
-        res.json(JSON.parse(out));
-      } catch {
-        res.json({ status: 'success', deleted: 0 });
-      }
-    });
+    try {
+      const deleted = sqliteCache.clear();
+      res.json({ status: 'success', deleted });
+    } catch (err: any) {
+      res.json({ status: 'success', deleted: 0 });
+    }
   });
 
   // What-If Simulator
   app.post('/api/simulate', async (req: Request, res: Response) => {
-    const { current_sku, alternative_sku, region = 'eastus', currency = 'INR' } = req.body;
-    const pyScript = `
-import json
-from backend.app.api.analysis import simulate_sku_switch
-res = simulate_sku_switch('${current_sku}', '${alternative_sku}', '${region}', '${currency}')
-print(json.dumps(res))
-`;
-    const child = spawn('python3', ['-c', pyScript], {
-      cwd: ROOT_DIR,
-      env: { ...process.env, PYTHONPATH: ROOT_DIR },
-    });
-    let out = '';
-    child.stdout.on('data', (d) => (out += d.toString()));
-    child.on('close', () => {
-      try {
-        res.json(JSON.parse(out));
-      } catch {
-        res.status(500).json({ error: 'Simulation failed' });
-      }
-    });
+    try {
+      const { current_sku, alternative_sku, region = 'eastus', currency = 'INR' } = req.body;
+      const result = await simulateSkuSwitch(current_sku, alternative_sku, region, currency);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Simulation failed', details: err.message });
+    }
   });
 
   // AI Cost Advisor with Gemini grounding
@@ -334,43 +329,92 @@ print(json.dumps(res))
       const explanations = analysis_data?.explanations || [];
       const resources = analysis_data?.resource_details || [];
 
-      // Always prepare deterministic base analysis
-      const pyScript = `
-import json
-from backend.app.services.advisor import AICostAdvisor, RiskAnalyzer
-from backend.app.schemas.report import FinancialSummary, PolicyVerdict, ResourceCostDetail
+      // Deterministic advice synthesized in Node.js
+      const increasingResources = resources.filter((r: any) => r.delta_monthly_cost > 0);
+      let primaryDriver = 'No cost increases detected.';
+      let driverImpact = 0;
+      if (increasingResources.length > 0) {
+        const sorted = [...increasingResources].sort((a: any, b: any) => b.delta_monthly_cost - a.delta_monthly_cost);
+        primaryDriver = `${sorted[0].sku} (${sorted[0].address.split('.').pop()})`;
+        driverImpact = sorted[0].delta_monthly_cost;
+      }
 
-fin = FinancialSummary(**${JSON.stringify(fin || { currency: 'INR', prior_monthly_total: 0, projected_monthly_total: 0, net_monthly_impact: 0, annualized_impact: 0, quarterly_impact: 0 })})
-verdict = PolicyVerdict(**${JSON.stringify(verdict || { budget_threshold: 4000, status: 'PASSED', amount_difference: 4000, is_breached: false, exit_code: 0, summary_message: 'OK' })})
-details = [ResourceCostDetail(**r) for r in ${JSON.stringify(resources)}]
-explanations = ${JSON.stringify(explanations)}
+      const totalIncrease = increasingResources.reduce((acc: number, r: any) => acc + r.delta_monthly_cost, 0);
+      const concentrationPct = totalIncrease > 0 ? Math.round((driverImpact / totalIncrease) * 1000) / 10 : 0.0;
 
-advice = AICostAdvisor.generate_advice(details, fin, verdict, explanations)
-risk = RiskAnalyzer.assess_risk(fin, verdict, details)
-print(json.dumps({'advice': advice, 'risk': risk}))
-`;
+      // Risk score calculation
+      let riskScore = 15;
+      const riskFactors: any[] = [];
 
-      const child = spawn('python3', ['-c', pyScript], {
-        cwd: ROOT_DIR,
-        env: { ...process.env, PYTHONPATH: ROOT_DIR },
-      });
-      let out = '';
-      child.stdout.on('data', (d) => (out += d.toString()));
-
-      child.on('close', async () => {
-        let baseResult: any = { advice: {}, risk: {} };
-        try {
-          baseResult = JSON.parse(out);
-        } catch {
-          // fallback
+      if (verdict?.is_breached) {
+        riskScore += 45;
+        riskFactors.push({
+          factor: 'Budget Guardrail Breached',
+          severity: 'HIGH',
+          description: `Net increase of ${formatINRText(fin?.net_monthly_impact || 0)}/mo exceeds allowable budget of ${formatINRText(verdict?.budget_threshold || 0)}/mo.`,
+        });
+      } else if (verdict?.budget_threshold > 0) {
+        const util = ((fin?.net_monthly_impact || 0) / verdict.budget_threshold) * 100;
+        if (util > 80) {
+          riskScore += 25;
+          riskFactors.push({
+            factor: 'Near Budget Limit',
+            severity: 'MEDIUM',
+            description: `Budget consumption is at ${util.toFixed(1)}% of allowable threshold.`,
+          });
         }
+      }
 
-        // If GEMINI_API_KEY is available, synthesize executive commentary without altering prices
-        let executiveCommentary = '';
-        if (process.env.GEMINI_API_KEY) {
-          try {
-            const ai = new GoogleGenAI({});
-            const prompt = `You are CostGuard's Senior FinOps AI Advisor.
+      if ((fin?.net_monthly_impact || 0) > 15000) {
+        riskScore += 30;
+        riskFactors.push({
+          factor: 'High Monthly Commitment',
+          severity: 'HIGH',
+          description: `Substantial new monthly spend addition of ${formatINRText(fin?.net_monthly_impact || 0)}/mo.`,
+        });
+      } else if ((fin?.net_monthly_impact || 0) > 5000) {
+        riskScore += 15;
+        riskFactors.push({
+          factor: 'Moderate Cost Addition',
+          severity: 'MEDIUM',
+          description: `Spend increase of ${formatINRText(fin?.net_monthly_impact || 0)}/mo (${formatINRText(fin?.annualized_impact || 0)}/year).`,
+        });
+      }
+
+      riskScore = Math.min(100, Math.max(0, riskScore));
+      const riskLevel = riskScore >= 70 ? 'CRITICAL' : riskScore >= 45 ? 'HIGH' : riskScore >= 25 ? 'MODERATE' : 'LOW';
+
+      const baseResult = {
+        advice: {
+          key_findings: [
+            verdict?.is_breached
+              ? `Plan breaches monthly budget by ${formatINRText(verdict.amount_difference)}. Deployment must be blocked.`
+              : `Plan is within budget with ${formatINRText(verdict?.amount_difference || 0)} headroom. Deployment permitted.`,
+            `Primary cost driver is ${primaryDriver} responsible for ${concentrationPct}% of total net cost addition.`,
+            `730 hours/month Azure run-rate projected at ${formatINRText(fin?.projected_monthly_total || 0)}/month.`,
+          ],
+          primary_cost_driver: primaryDriver,
+          driver_concentration_pct: concentrationPct,
+          optimization_actions: [
+            'Evaluate Azure B-series burstable VMs for variable workloads.',
+            'Review disk storage tier (e.g. Standard SSD instead of Premium SSD for dev environments).',
+            'Verify teardown automations for non-production environments after business hours.',
+          ],
+        },
+        risk: {
+          risk_score: riskScore,
+          risk_level: riskLevel,
+          factors: riskFactors,
+          deployment_recommendation: verdict?.is_breached ? 'BLOCK' : 'APPROVE',
+        },
+        executive_commentary: '',
+      };
+
+      // Optional Gemini AI commentary if API key configured
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          const ai = new GoogleGenAI({});
+          const prompt = `You are CostGuard's Senior FinOps AI Advisor.
 Analyze these deterministic cost numbers for an upcoming Terraform deployment:
 - Net Monthly Impact: ${fin?.net_monthly_impact} ${fin?.currency}
 - Annualized Impact: ${fin?.annualized_impact} ${fin?.currency}
@@ -386,19 +430,17 @@ CRITICAL RULES:
 2. Provide concise, high-impact FinOps executive guidance in 3 short bullet points.
 3. Clearly state whether deployment can proceed or should be held for optimization.`;
 
-            const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: prompt,
-            });
-            executiveCommentary = response.text || '';
-          } catch (aiErr: any) {
-            console.warn('Gemini advisor call skipped or failed:', aiErr.message);
-          }
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+          });
+          baseResult.executive_commentary = response.text || '';
+        } catch (aiErr: any) {
+          console.warn('Gemini advisor call skipped or failed:', aiErr.message);
         }
+      }
 
-        baseResult.executive_commentary = executiveCommentary;
-        res.json(baseResult);
-      });
+      res.json(baseResult);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -423,7 +465,7 @@ CRITICAL RULES:
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[CostGuard] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[CostGuard] Server running on http://0.0.0.0:${PORT} (Node.js engine)`);
   });
 }
 
