@@ -1,0 +1,27 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "resource_changes": [
+    {
+      "address": "azurerm_linux_virtual_machine.legacy_worker",
+      "mode": "managed",
+      "type": "azurerm_linux_virtual_machine",
+      "name": "legacy_worker",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": ["delete"],
+        "before": {
+          "location": "eastus",
+          "name": "vm-legacy-worker",
+          "size": "Standard_B1s",
+          "tags": {
+            "Environment": "Staging",
+            "Team": "Backend",
+            "Application": "BatchProcessor"
+          }
+        },
+        "after": null
+      }
+    }
+  ]
+}

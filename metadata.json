@@ -1,0 +1,6 @@
+{
+  "name": "CostGuard - Cloud Infrastructure Cost Guardrail",
+  "description": "Intelligent Cloud Infrastructure Cost Impact Predictor & Financial Guardrail analyzing Terraform plans prior to deployment.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

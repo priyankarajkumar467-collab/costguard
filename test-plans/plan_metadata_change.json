@@ -1,0 +1,23 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "resource_changes": [
+    {
+      "address": "azurerm_linux_virtual_machine.existing_vm",
+      "type": "azurerm_linux_virtual_machine",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "location": "eastus",
+          "size": "Standard_B2s",
+          "tags": { "CostCenter": "1001" }
+        },
+        "after": {
+          "location": "eastus",
+          "size": "Standard_B2s",
+          "tags": { "CostCenter": "1002", "Environment": "Production" }
+        }
+      }
+    }
+  ]
+}

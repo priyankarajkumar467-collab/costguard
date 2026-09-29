@@ -1,0 +1,36 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "resource_changes": [
+    {
+      "address": "azurerm_windows_virtual_machine.reporting_host",
+      "mode": "managed",
+      "type": "azurerm_windows_virtual_machine",
+      "name": "reporting_host",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": {
+          "location": "westeurope",
+          "name": "vm-win-report-old",
+          "size": "Standard_D2s_v3",
+          "tags": {
+            "Environment": "Analytics",
+            "Team": "BI",
+            "Application": "FinancialReporting"
+          }
+        },
+        "after": {
+          "location": "westeurope",
+          "name": "vm-win-report-new",
+          "size": "Standard_D4s_v3",
+          "tags": {
+            "Environment": "Analytics",
+            "Team": "BI",
+            "Application": "FinancialReporting"
+          }
+        }
+      }
+    }
+  ]
+}

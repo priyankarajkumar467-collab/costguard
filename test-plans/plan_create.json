@@ -1,0 +1,70 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "resource_changes": [
+    {
+      "address": "azurerm_linux_virtual_machine.web_server",
+      "module_address": "",
+      "mode": "managed",
+      "type": "azurerm_linux_virtual_machine",
+      "name": "web_server",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "location": "eastus",
+          "name": "vm-prod-web-01",
+          "size": "Standard_D2s_v3",
+          "tags": {
+            "Environment": "Production",
+            "Team": "Frontend",
+            "Application": "Storefront",
+            "Owner": "alex@company.internal"
+          }
+        }
+      }
+    },
+    {
+      "address": "azurerm_managed_disk.data_disk",
+      "module_address": "",
+      "mode": "managed",
+      "type": "azurerm_managed_disk",
+      "name": "data_disk",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "location": "eastus",
+          "name": "disk-prod-web-data",
+          "sku": "Premium_LRS",
+          "storage_account_type": "Premium_LRS",
+          "disk_size_gb": 128,
+          "tags": {
+            "Environment": "Production",
+            "Team": "Frontend",
+            "Application": "Storefront",
+            "Owner": "alex@company.internal"
+          }
+        }
+      }
+    },
+    {
+      "address": "azurerm_resource_group.rg_main",
+      "module_address": "",
+      "mode": "managed",
+      "type": "azurerm_resource_group",
+      "name": "rg_main",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "location": "eastus",
+          "name": "rg-costguard-prod"
+        }
+      }
+    }
+  ]
+}

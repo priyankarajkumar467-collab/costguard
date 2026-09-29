@@ -1,0 +1,36 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "resource_changes": [
+    {
+      "address": "azurerm_linux_virtual_machine.api_cluster",
+      "mode": "managed",
+      "type": "azurerm_linux_virtual_machine",
+      "name": "api_cluster",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "location": "East US",
+          "name": "vm-prod-api-01",
+          "size": "Standard_B2s",
+          "tags": {
+            "Environment": "Production",
+            "Team": "CoreAPI",
+            "Application": "Payments"
+          }
+        },
+        "after": {
+          "location": "East US",
+          "name": "vm-prod-api-01",
+          "size": "Standard_D4s_v3",
+          "tags": {
+            "Environment": "Production",
+            "Team": "CoreAPI",
+            "Application": "Payments"
+          }
+        }
+      }
+    }
+  ]
+}
