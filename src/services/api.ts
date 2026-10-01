@@ -4,18 +4,63 @@ import {
   SamplePlanItem,
   SimulationResult,
 } from '../types';
+import { SAMPLE_PLANS_LIST, SAMPLE_PLANS_CONTENT } from '../data/sample-plans';
+import {
+  analyzeCostGuardPlan,
+  simulateSkuSwitch,
+  universalCache,
+  runCostGuardCli,
+} from '../engine/costguard-core';
+
+const isStaticOrGitHubPages =
+  typeof window !== 'undefined' &&
+  (window.location.hostname.includes('github.io') ||
+    window.location.protocol === 'file:' ||
+    process.env.NODE_ENV === 'production');
 
 export const api = {
   async getSamplePlans(): Promise<SamplePlanItem[]> {
-    const res = await fetch('/api/plans');
-    if (!res.ok) throw new Error('Failed to load sample plans');
-    return res.json();
+    if (!isStaticOrGitHubPages) {
+      try {
+        const res = await fetch('/costguard/api/plans').catch(() => fetch('/api/plans'));
+        if (res && res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fall back to bundled plans
+      }
+    }
+    return SAMPLE_PLANS_LIST;
   },
 
   async getPlanContent(filename: string): Promise<{ filename: string; content: any }> {
-    const res = await fetch(`/api/plans/${filename}`);
-    if (!res.ok) throw new Error(`Failed to load plan ${filename}`);
-    return res.json();
+    if (!isStaticOrGitHubPages) {
+      try {
+        const res = await fetch(`/costguard/api/plans/${filename}`).catch(() => fetch(`/api/plans/${filename}`));
+        if (res && res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fall back to bundled content
+      }
+    }
+
+    if (filename in SAMPLE_PLANS_CONTENT) {
+      return { filename, content: SAMPLE_PLANS_CONTENT[filename] };
+    }
+
+    // Try fetching from static public folder if not in bundled list
+    try {
+      const publicRes = await fetch(`./test-plans/${filename}`);
+      if (publicRes.ok) {
+        const json = await publicRes.json();
+        return { filename, content: json };
+      }
+    } catch {
+      // ignore
+    }
+
+    throw new Error(`Plan file '${filename}' not found`);
   },
 
   async analyzePlan(
@@ -24,46 +69,110 @@ export const api = {
     currency: string = 'INR',
     includeSpot: boolean = false
   ): Promise<AnalysisResponse> {
-    const res = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        plan,
-        max_increase: maxIncrease,
-        currency,
-        include_spot: includeSpot,
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Analysis failed' }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+    // If running in development with active backend server, attempt API call first
+    if (!isStaticOrGitHubPages) {
+      try {
+        const apiUrl = '/costguard/api/analyze';
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan,
+            max_increase: maxIncrease,
+            currency,
+            include_spot: includeSpot,
+          }),
+        }).catch(() =>
+          fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              plan,
+              max_increase: maxIncrease,
+              currency,
+              include_spot: includeSpot,
+            }),
+          })
+        );
+
+        if (res && res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Server unreachable -> seamless client-side execution below
+      }
     }
-    return res.json();
+
+    // Client-side pure TypeScript analysis (Works on GitHub Pages with ZERO backend required)
+    const result = await analyzeCostGuardPlan(plan, {
+      maxIncrease,
+      currency,
+      includeSpot,
+    });
+    return result as AnalysisResponse;
   },
 
-  async runCliCommand(command: string, planContent?: any): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    const res = await fetch('/api/cli/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, plan_content: planContent }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'CLI execution failed' }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+  async runCliCommand(
+    command: string,
+    planContent?: any
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    if (!isStaticOrGitHubPages) {
+      try {
+        const res = await fetch('/costguard/api/cli/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command, plan_content: planContent }),
+        }).catch(() =>
+          fetch('/api/cli/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command, plan_content: planContent }),
+          })
+        );
+        if (res && res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fall back to client-side CLI runner
+      }
     }
-    return res.json();
+
+    // In-browser CLI execution
+    return await runCostGuardCli(command, planContent);
   },
 
   async getCacheStats(): Promise<CacheStatsResponse> {
-    const res = await fetch('/api/cache/stats');
-    if (!res.ok) throw new Error('Failed to load cache statistics');
-    return res.json();
+    if (!isStaticOrGitHubPages) {
+      try {
+        const res = await fetch('/costguard/api/cache/stats').catch(() => fetch('/api/cache/stats'));
+        if (res && res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fall back to local client cache
+      }
+    }
+
+    const stats = universalCache.getStats();
+    return stats as CacheStatsResponse;
   },
 
   async clearCache(): Promise<{ status: string; deleted: number }> {
-    const res = await fetch('/api/cache', { method: 'DELETE' });
-    if (!res.ok) throw new Error('Failed to clear cache');
-    return res.json();
+    if (!isStaticOrGitHubPages) {
+      try {
+        const res = await fetch('/costguard/api/cache', { method: 'DELETE' }).catch(() =>
+          fetch('/api/cache', { method: 'DELETE' })
+        );
+        if (res && res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fall back to local client cache
+      }
+    }
+
+    const deleted = universalCache.clear();
+    return { status: 'success', deleted };
   },
 
   async simulate(
@@ -72,30 +181,79 @@ export const api = {
     region: string = 'eastus',
     currency: string = 'INR'
   ): Promise<SimulationResult> {
-    const res = await fetch('/api/simulate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        current_sku: currentSku,
-        alternative_sku: alternativeSku,
-        region,
-        currency,
-      }),
-    });
-    if (!res.ok) throw new Error('Failed to simulate SKU switch');
-    return res.json();
+    if (!isStaticOrGitHubPages) {
+      try {
+        const res = await fetch('/costguard/api/simulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            current_sku: currentSku,
+            alternative_sku: alternativeSku,
+            region,
+            currency,
+          }),
+        }).catch(() =>
+          fetch('/api/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              current_sku: currentSku,
+              alternative_sku: alternativeSku,
+              region,
+              currency,
+            }),
+          })
+        );
+        if (res && res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fall back to client-side simulation
+      }
+    }
+
+    const sim = await simulateSkuSwitch(currentSku, alternativeSku, region, currency);
+    return sim as SimulationResult;
   },
 
   async queryAdvisor(analysisData: any, promptContext?: string): Promise<any> {
-    const res = await fetch('/api/advisor', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        analysis_data: analysisData,
-        prompt_context: promptContext,
-      }),
-    });
-    if (!res.ok) throw new Error('Failed to consult AI advisor');
-    return res.json();
+    if (!isStaticOrGitHubPages) {
+      try {
+        const res = await fetch('/costguard/api/advisor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            analysis_data: analysisData,
+            prompt_context: promptContext,
+          }),
+        }).catch(() =>
+          fetch('/api/advisor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              analysis_data: analysisData,
+              prompt_context: promptContext,
+            }),
+          })
+        );
+        if (res && res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fall back to rule-based advisor
+      }
+    }
+
+    // Static / Client-Side FinOps Advisor
+    const netImpact = analysisData?.financial_summary?.net_monthly_impact || 0;
+    const isBreached = analysisData?.policy_verdict?.is_breached;
+    return {
+      title: 'CostGuard FinOps Advisor',
+      detected_cost_increase: `${netImpact >= 0 ? '+' : ''}₹${Math.abs(netImpact).toLocaleString('en-IN')}/mo`,
+      primary_driver: analysisData?.explanations?.[0] || 'Compute and storage alterations',
+      executive_commentary: isBreached
+        ? '⚠️ Deployment exceeds configured cost threshold. Review high-spec VM SKUs (e.g., Standard_D2s_v3) or consider burstable B-series instances before merging.'
+        : '✅ Infrastructure plan complies with financial guardrails. Cost changes are within policy headroom.',
+    };
   },
 };

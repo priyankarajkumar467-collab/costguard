@@ -1,0 +1,126 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "resource_changes": [
+    {
+      "address": "azurerm_resource_group.rg_network",
+      "type": "azurerm_resource_group",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "rg-network", "location": "eastus" }
+      }
+    },
+    {
+      "address": "azurerm_virtual_network.vnet_hub",
+      "type": "azurerm_virtual_network",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "vnet-hub", "location": "eastus" }
+      }
+    },
+    {
+      "address": "azurerm_subnet.snet_gateway",
+      "type": "azurerm_subnet",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "GatewaySubnet" }
+      }
+    },
+    {
+      "address": "azurerm_subnet.snet_apps",
+      "type": "azurerm_subnet",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "snet-apps" }
+      }
+    },
+    {
+      "address": "azurerm_network_security_group.nsg_web",
+      "type": "azurerm_network_security_group",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "nsg-web", "location": "eastus" }
+      }
+    },
+    {
+      "address": "azurerm_network_security_rule.allow_https",
+      "type": "azurerm_network_security_rule",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "allow-https" }
+      }
+    },
+    {
+      "address": "azurerm_network_security_rule.allow_ssh",
+      "type": "azurerm_network_security_rule",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "allow-ssh" }
+      }
+    },
+    {
+      "address": "azurerm_route_table.rt_main",
+      "type": "azurerm_route_table",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "rt-main", "location": "eastus" }
+      }
+    },
+    {
+      "address": "azurerm_route.route_internet",
+      "type": "azurerm_route",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "default-internet" }
+      }
+    },
+    {
+      "address": "azurerm_subnet_route_table_association.assoc_apps",
+      "type": "azurerm_subnet_route_table_association",
+      "change": {
+        "actions": ["create"],
+        "after": {}
+      }
+    },
+    {
+      "address": "azurerm_subnet_network_security_group_association.assoc_nsg",
+      "type": "azurerm_subnet_network_security_group_association",
+      "change": {
+        "actions": ["create"],
+        "after": {}
+      }
+    },
+    {
+      "address": "azurerm_network_interface.nic_dummy",
+      "type": "azurerm_network_interface",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "nic-dummy", "location": "eastus" }
+      }
+    },
+    {
+      "address": "azurerm_private_dns_zone.dns_internal",
+      "type": "azurerm_private_dns_zone",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "internal.corp" }
+      }
+    },
+    {
+      "address": "azurerm_private_dns_zone_virtual_network_link.link_hub",
+      "type": "azurerm_private_dns_zone_virtual_network_link",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "link-hub" }
+      }
+    },
+    {
+      "address": "azurerm_log_analytics_workspace.law_dummy",
+      "type": "azurerm_log_analytics_workspace",
+      "change": {
+        "actions": ["create"],
+        "after": { "name": "law-central", "location": "eastus" }
+      }
+    }
+  ]
+}

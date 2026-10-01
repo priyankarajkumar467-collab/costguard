@@ -1,0 +1,30 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.0",
+  "resource_changes": [
+    {
+      "address": "azurerm_linux_virtual_machine.experimental",
+      "type": "azurerm_linux_virtual_machine",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "location": "eastus",
+          "size": "Custom_Unknown_SKU_Quantum_9999",
+          "tags": { "Team": "Research" }
+        }
+      }
+    },
+    {
+      "address": "azurerm_linux_virtual_machine.standard_worker",
+      "type": "azurerm_linux_virtual_machine",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "location": "eastus",
+          "size": "Standard_B1s",
+          "tags": { "Team": "Research" }
+        }
+      }
+    }
+  ]
+}

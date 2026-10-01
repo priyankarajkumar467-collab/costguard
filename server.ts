@@ -26,6 +26,14 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
 
+  // Route /costguard/api requests to standard /api handlers
+  app.use((req, _res, next) => {
+    if (req.url.startsWith('/costguard/api')) {
+      req.url = req.url.replace('/costguard', '');
+    }
+    next();
+  });
+
   // Gracefully handle malformed JSON in HTTP body with JSON response (exit code 2)
   app.use((err: any, _req: Request, res: Response, next: any) => {
     if (err instanceof SyntaxError && 'body' in err) {
@@ -463,15 +471,28 @@ CRITICAL RULES:
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
+      base: '/costguard/',
     });
     app.use(vite.middlewares);
+
+    // Redirect root / to /costguard/
+    app.get('/', (_req, res) => {
+      res.redirect('/costguard/');
+    });
+    app.get('/costguard', (_req, res) => {
+      res.redirect('/costguard/');
+    });
   } else {
     // In production, serve static files from dist
     const distPath = path.join(ROOT_DIR, 'dist');
     if (fs.existsSync(distPath)) {
+      app.use('/costguard', express.static(distPath));
       app.use(express.static(distPath));
-      app.get('*', (_req, res) => {
+      app.get(['/costguard/*', '/costguard'], (_req, res) => {
         res.sendFile(path.join(distPath, 'index.html'));
+      });
+      app.get('/', (_req, res) => {
+        res.redirect('/costguard/');
       });
     }
   }
