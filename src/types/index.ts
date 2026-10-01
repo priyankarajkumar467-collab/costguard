@@ -47,6 +47,14 @@ export interface PolicyVerdict {
   summary_message: string;
 }
 
+export interface BudgetThresholdConfig {
+  maxIncrease: number; // Hard policy limit (exit code 1)
+  warningThreshold: number; // Soft warning alert limit (₹/mo)
+  warningEnabled: boolean;
+  totalSpendCap: number; // Maximum total monthly run-rate ceiling (₹/mo)
+  totalSpendCapEnabled: boolean;
+}
+
 export interface ResourceCounts {
   total_detected: number;
   billable: number;

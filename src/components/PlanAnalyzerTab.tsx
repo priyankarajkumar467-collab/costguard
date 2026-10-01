@@ -65,7 +65,7 @@ export const PlanAnalyzerTab: React.FC<PlanAnalyzerTabProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Top Input Box */}
       <div className="p-5 rounded-xl bg-slate-900 border border-slate-800">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3 mb-4">

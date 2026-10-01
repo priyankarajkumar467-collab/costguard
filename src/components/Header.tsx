@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, RefreshCw, Zap, Database } from 'lucide-react';
+import { Shield, RefreshCw, Zap, Database, ChevronDown } from 'lucide-react';
 import { SamplePlanItem } from '../types';
 
 interface HeaderProps {
@@ -26,53 +26,57 @@ export const Header: React.FC<HeaderProps> = ({
   apiCalls,
 }) => {
   return (
-    <header className="border-b border-slate-800 bg-slate-900/95 sticky top-0 z-40 px-4 lg:px-8 py-3.5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* Brand */}
+    <header className="border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md sticky top-0 z-40 px-4 sm:px-6 lg:px-8 py-3 transition-colors">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto w-full">
+        {/* Brand Zone */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30">
-            <Shield className="w-5 h-5 text-white" />
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 ring-1 ring-white/10 shrink-0">
+            <Shield className="w-4 h-4 text-white" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-lg font-bold tracking-tight text-white font-mono">COSTGUARD</span>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono font-medium">
-                ₹ INR
+              <span className="text-base font-extrabold tracking-tight text-white font-sans">
+                COSTGUARD
+              </span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded font-mono font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                INR (₹)
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              Predict infrastructure cost before you deploy.
+            <p className="text-[11px] text-slate-400">
+              Predict infrastructure cost before you deploy
             </p>
           </div>
         </div>
 
-        {/* Minimal Controls */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Simple Cache Indicator */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-400 font-mono">
-            <Database className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Cache: <strong className="text-slate-200">{cacheHits} hits</strong> · <strong className="text-slate-200">{apiCalls} API lookups</strong></span>
+        {/* Minimal Actions & Controls */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Cache Status Badge */}
+          <div className="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400 font-mono">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span>
+              Cache: <strong className="text-slate-200">{cacheHits}</strong> hits &bull; <strong className="text-slate-200">{apiCalls}</strong> lookups
+            </span>
           </div>
 
           {/* Quick Plan Selector */}
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs text-slate-400 font-medium">Plan:</label>
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs">
+            <span className="text-slate-400 font-medium">Plan:</span>
             <select
               value={currentPlanFilename}
               onChange={(e) => onSelectPlan(e.target.value)}
-              className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="bg-transparent text-slate-200 text-xs font-semibold focus:outline-none cursor-pointer"
             >
               {plans.map((p) => (
-                <option key={p.filename} value={p.filename}>
+                <option key={p.filename} value={p.filename} className="bg-slate-900 text-slate-200">
                   {p.title}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Budget Quick Input (₹) */}
-          <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono">
-            <span className="text-slate-400">Budget:</span>
+          {/* Budget Quick Input */}
+          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono">
+            <span className="text-slate-400">Limit:</span>
             <span className="text-indigo-400 font-bold">₹</span>
             <input
               type="number"
@@ -80,16 +84,16 @@ export const Header: React.FC<HeaderProps> = ({
               step="500"
               value={maxIncrease}
               onChange={(e) => onChangeMaxIncrease(Math.max(0, parseFloat(e.target.value) || 0))}
-              className="w-20 bg-transparent text-slate-200 font-bold focus:outline-none"
+              className="w-16 bg-transparent text-slate-200 font-bold focus:outline-none text-right"
             />
             <span className="text-slate-500">/mo</span>
           </div>
 
-          {/* Analyze Plan Button */}
+          {/* Analyze Plan CTA Button */}
           <button
             onClick={onRunQuickDemo}
             disabled={isAnalyzing}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow transition active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 transition active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             {isAnalyzing ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />

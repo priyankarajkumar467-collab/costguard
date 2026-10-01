@@ -23,6 +23,9 @@ import {
   Calendar,
   DollarSign,
   AlertCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -271,12 +274,19 @@ export function resolveCostCenter(tags?: Record<string, string>): CostCenterBadg
   };
 }
 
+export type TableSortKey = 'impact' | 'projectedCost' | 'currentCost' | 'name' | 'sku';
+export type TableSortDirection = 'asc' | 'desc';
+
 export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCostCenterId, setSelectedCostCenterId] = useState<string | null>(null);
   const [selectedResourceType, setSelectedResourceType] = useState<string | null>(null);
   const [chartMetric, setChartMetric] = useState<'comparison' | 'delta'>('comparison');
   const [activeTagModalResource, setActiveTagModalResource] = useState<EnrichedResourceCostDetail | null>(null);
+
+  // Sorting state for table
+  const [sortKey, setSortKey] = useState<TableSortKey>('impact');
+  const [sortDirection, setSortDirection] = useState<TableSortDirection>('desc');
 
   // Line Chart 6-Month Trend States
   const [trendScenario, setTrendScenario] = useState<'flat' | 'moderate' | 'aggressive'>('moderate');
@@ -377,10 +387,6 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
     const projected = fin.projected_monthly_total || 0;
     const budgetCeiling = prior + (verdict.budget_threshold || 0);
 
-    // Scaling growth rates
-    // flat: 0% / mo
-    // moderate: 3% / mo (typical cloud storage & data accumulation)
-    // aggressive: 6% / mo (rapid workload expansion)
     const growthRate = trendScenario === 'flat' ? 0 : trendScenario === 'moderate' ? 0.03 : 0.06;
     const baseGrowthRate = trendScenario === 'flat' ? 0 : trendScenario === 'moderate' ? 0.015 : 0.03;
 
@@ -500,9 +506,54 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
     });
   }, [enrichedResources, selectedCostCenterId, selectedResourceType, searchTerm]);
 
+  // Sort filtered resources by user-selected criteria
+  const sortedAndFiltered = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      let comparison = 0;
+      switch (sortKey) {
+        case 'name': {
+          const nameA = (a.address.split('.').pop() || a.address).toLowerCase();
+          const nameB = (b.address.split('.').pop() || b.address).toLowerCase();
+          comparison = nameA.localeCompare(nameB);
+          break;
+        }
+        case 'currentCost': {
+          comparison = a.old_monthly_cost - b.old_monthly_cost;
+          break;
+        }
+        case 'projectedCost': {
+          comparison = a.new_monthly_cost - b.new_monthly_cost;
+          break;
+        }
+        case 'impact': {
+          comparison = a.delta_monthly_cost - b.delta_monthly_cost;
+          break;
+        }
+        case 'sku': {
+          comparison = (a.sku || '').localeCompare(b.sku || '');
+          break;
+        }
+        default:
+          comparison = 0;
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [filtered, sortKey, sortDirection]);
+
   const hasActiveFilters = Boolean(selectedCostCenterId || selectedResourceType || searchTerm);
 
-  // Export handlers
+  // Column header sort click handler
+  const handleSort = (key: TableSortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDirection(key === 'name' || key === 'sku' ? 'asc' : 'desc');
+    }
+  };
+
+  // Export handlers (using sorted and filtered resources)
   const handleExportPDF = (useFilter: boolean = exportFilterOnly) => {
     setIsExporting('pdf');
     setShowExportDropdown(false);
@@ -524,7 +575,7 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
       }
 
       exportCostAnalysisToPDF(analysis, {
-        customResources: useFilter && hasActiveFilters ? filtered : undefined,
+        customResources: useFilter && hasActiveFilters ? sortedAndFiltered : sortedAndFiltered,
         filterLabel,
       });
 
@@ -558,7 +609,7 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
       }
 
       exportCostAnalysisToCSV(analysis, {
-        customResources: useFilter && hasActiveFilters ? filtered : undefined,
+        customResources: useFilter && hasActiveFilters ? sortedAndFiltered : sortedAndFiltered,
         filterLabel,
       });
 
@@ -704,7 +755,7 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
   const firstBreachMonth = trendData.find((m) => m.budgetThreshold > 0 && m.projectedMonthly > m.budgetThreshold);
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* ---------------------------------------------------- */}
       {/* Export Success Notification Toast */}
       {/* ---------------------------------------------------- */}
@@ -777,7 +828,7 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
                         onChange={(e) => setExportFilterOnly(e.target.checked)}
                         className="rounded border-slate-700 text-indigo-500 focus:ring-0"
                       />
-                      <span>Only export filtered view ({filtered.length} items)</span>
+                      <span>Only export filtered view ({sortedAndFiltered.length} items)</span>
                     </label>
                   )}
 
@@ -1282,7 +1333,7 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
       </div>
 
       {/* ---------------------------------------------------- */}
-      {/* Search Header & Interactive Filters & Export Actions */}
+      {/* Search Header & Interactive Filters & Sorting & Export Actions */}
       {/* ---------------------------------------------------- */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-4 rounded-xl bg-slate-900 border border-slate-800">
         <div>
@@ -1302,16 +1353,67 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
             )}
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Showing {filtered.length} of {enrichedResources.length} resources &bull; 730 hours/month standard calculation
+            Showing {sortedAndFiltered.length} of {enrichedResources.length} resources &bull; Sorted by{' '}
+            <span className="text-indigo-400 font-mono">
+              {sortKey === 'impact'
+                ? `Impact (${sortDirection.toUpperCase()})`
+                : sortKey === 'projectedCost'
+                ? `Projected Cost (${sortDirection.toUpperCase()})`
+                : sortKey === 'currentCost'
+                ? `Current Cost (${sortDirection.toUpperCase()})`
+                : sortKey === 'name'
+                ? `Name (${sortDirection.toUpperCase()})`
+                : `SKU (${sortDirection.toUpperCase()})`}
+            </span>
           </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          {/* Quick Sort Dropdown */}
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="text-slate-400 text-[11px]">Sort:</span>
+            <select
+              value={`${sortKey}-${sortDirection}`}
+              onChange={(e) => {
+                const [key, dir] = e.target.value.split('-');
+                setSortKey(key as TableSortKey);
+                setSortDirection(dir as TableSortDirection);
+              }}
+              className="bg-transparent text-slate-200 text-xs font-medium focus:outline-none cursor-pointer"
+            >
+              <option value="impact-desc" className="bg-slate-900 text-slate-200">
+                Impact: High to Low
+              </option>
+              <option value="impact-asc" className="bg-slate-900 text-slate-200">
+                Impact: Low to High
+              </option>
+              <option value="projectedCost-desc" className="bg-slate-900 text-slate-200">
+                Projected Cost: High to Low
+              </option>
+              <option value="projectedCost-asc" className="bg-slate-900 text-slate-200">
+                Projected Cost: Low to High
+              </option>
+              <option value="currentCost-desc" className="bg-slate-900 text-slate-200">
+                Current Cost: High to Low
+              </option>
+              <option value="currentCost-asc" className="bg-slate-900 text-slate-200">
+                Current Cost: Low to High
+              </option>
+              <option value="name-asc" className="bg-slate-900 text-slate-200">
+                Name: A to Z
+              </option>
+              <option value="name-desc" className="bg-slate-900 text-slate-200">
+                Name: Z to A
+              </option>
+            </select>
+          </div>
+
           {/* Quick Export Button Bar */}
           <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-1 gap-1">
             <button
               onClick={() => handleExportPDF(hasActiveFilters)}
-              title={hasActiveFilters ? `Export ${filtered.length} filtered items to PDF` : 'Export all items to PDF'}
+              title={hasActiveFilters ? `Export ${sortedAndFiltered.length} filtered items to PDF` : 'Export all items to PDF'}
               disabled={isExporting !== null}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition"
             >
@@ -1320,7 +1422,7 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
             </button>
             <button
               onClick={() => handleExportCSV(hasActiveFilters)}
-              title={hasActiveFilters ? `Export ${filtered.length} filtered items to CSV` : 'Export all items to CSV'}
+              title={hasActiveFilters ? `Export ${sortedAndFiltered.length} filtered items to CSV` : 'Export all items to CSV'}
               disabled={isExporting !== null}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition"
             >
@@ -1330,11 +1432,11 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
           </div>
 
           {/* Search Field */}
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:w-56">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search SKU, department, tags..."
+              placeholder="Search SKU, tags..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -1352,32 +1454,137 @@ export const CostImpactTab: React.FC<CostImpactTabProps> = ({ analysis }) => {
       </div>
 
       {/* ---------------------------------------------------- */}
-      {/* Main Single Clean Table with Cost Center Badges */}
+      {/* Main Single Clean Table with Cost Center Badges & Clickable Column Sort */}
       {/* ---------------------------------------------------- */}
       <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] font-mono border-b border-slate-800">
+            <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] font-mono border-b border-slate-800 select-none">
               <tr>
-                <th className="py-2.5 px-3">Resource</th>
+                {/* 1. Resource Name Sort */}
+                <th className="py-2.5 px-3">
+                  <button
+                    onClick={() => handleSort('name')}
+                    className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase transition cursor-pointer group ${
+                      sortKey === 'name' ? 'text-indigo-300 font-bold' : 'hover:text-slate-200'
+                    }`}
+                  >
+                    <span>Resource</span>
+                    {sortKey === 'name' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-indigo-400" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-indigo-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-600 group-hover:text-slate-400 transition" />
+                    )}
+                  </button>
+                </th>
+
+                {/* 2. Cost Center */}
                 <th className="py-2.5 px-3">Cost Center / Dept</th>
+
+                {/* 3. Action */}
                 <th className="py-2.5 px-3">Action</th>
-                <th className="py-2.5 px-3">SKU</th>
+
+                {/* 4. SKU Sort */}
+                <th className="py-2.5 px-3">
+                  <button
+                    onClick={() => handleSort('sku')}
+                    className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase transition cursor-pointer group ${
+                      sortKey === 'sku' ? 'text-indigo-300 font-bold' : 'hover:text-slate-200'
+                    }`}
+                  >
+                    <span>SKU</span>
+                    {sortKey === 'sku' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-indigo-400" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-indigo-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-600 group-hover:text-slate-400 transition" />
+                    )}
+                  </button>
+                </th>
+
+                {/* 5. Region */}
                 <th className="py-2.5 px-3">Region</th>
-                <th className="py-2.5 px-3 text-right">Current</th>
-                <th className="py-2.5 px-3 text-right">Projected</th>
-                <th className="py-2.5 px-3 text-right">Impact</th>
+
+                {/* 6. Current Cost Sort */}
+                <th className="py-2.5 px-3 text-right">
+                  <button
+                    onClick={() => handleSort('currentCost')}
+                    className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase transition cursor-pointer group justify-end w-full ${
+                      sortKey === 'currentCost' ? 'text-indigo-300 font-bold' : 'hover:text-slate-200'
+                    }`}
+                  >
+                    <span>Current</span>
+                    {sortKey === 'currentCost' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-indigo-400" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-indigo-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-600 group-hover:text-slate-400 transition" />
+                    )}
+                  </button>
+                </th>
+
+                {/* 7. Projected Cost Sort */}
+                <th className="py-2.5 px-3 text-right">
+                  <button
+                    onClick={() => handleSort('projectedCost')}
+                    className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase transition cursor-pointer group justify-end w-full ${
+                      sortKey === 'projectedCost' ? 'text-indigo-300 font-bold' : 'hover:text-slate-200'
+                    }`}
+                  >
+                    <span>Projected</span>
+                    {sortKey === 'projectedCost' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-indigo-400" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-indigo-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-600 group-hover:text-slate-400 transition" />
+                    )}
+                  </button>
+                </th>
+
+                {/* 8. Impact / Delta Sort */}
+                <th className="py-2.5 px-3 text-right">
+                  <button
+                    onClick={() => handleSort('impact')}
+                    className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase transition cursor-pointer group justify-end w-full ${
+                      sortKey === 'impact' ? 'text-indigo-300 font-bold' : 'hover:text-slate-200'
+                    }`}
+                  >
+                    <span>Impact</span>
+                    {sortKey === 'impact' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-indigo-400" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-indigo-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-600 group-hover:text-slate-400 transition" />
+                    )}
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
-              {filtered.length === 0 ? (
+              {sortedAndFiltered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-slate-500 font-sans">
                     No resources matched the filter criteria.
                   </td>
                 </tr>
               ) : (
-                filtered.map((r, i) => {
+                sortedAndFiltered.map((r, i) => {
                   const isSkipped = r.status === 'SKIPPED';
                   const shortName = r.address.split('.').pop() || r.address;
                   const tagCount = r.tags ? Object.keys(r.tags).length : 0;
