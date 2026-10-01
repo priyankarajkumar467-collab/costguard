@@ -26,16 +26,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 24
 
       - name: Install dependencies
         run: npm install
 
-      - name: Build Vite application for GitHub Pages
+      - name: Build Vite application
         run: npm run build
 
       - name: Upload GitHub Pages artifact
