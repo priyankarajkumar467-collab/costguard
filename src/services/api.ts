@@ -12,15 +12,23 @@ import {
   runCostGuardCli,
 } from '../engine/costguard-core';
 
-const isStaticOrGitHubPages =
+// Detect if running on GitHub Pages or static hosting where backend Node/Express server does not exist
+const isGitHubPages =
   typeof window !== 'undefined' &&
   (window.location.hostname.includes('github.io') ||
-    window.location.protocol === 'file:' ||
-    process.env.NODE_ENV === 'production');
+    window.location.protocol === 'file:');
+
+// Only attempt backend fetch if running in local dev / AI Studio preview environment
+const canTryBackend =
+  typeof window !== 'undefined' &&
+  !isGitHubPages &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.includes('run.app'));
 
 export const api = {
   async getSamplePlans(): Promise<SamplePlanItem[]> {
-    if (!isStaticOrGitHubPages) {
+    if (canTryBackend) {
       try {
         const res = await fetch('/costguard/api/plans').catch(() => fetch('/api/plans'));
         if (res && res.ok) {
@@ -34,7 +42,7 @@ export const api = {
   },
 
   async getPlanContent(filename: string): Promise<{ filename: string; content: any }> {
-    if (!isStaticOrGitHubPages) {
+    if (canTryBackend) {
       try {
         const res = await fetch(`/costguard/api/plans/${filename}`).catch(() => fetch(`/api/plans/${filename}`));
         if (res && res.ok) {
@@ -70,7 +78,7 @@ export const api = {
     includeSpot: boolean = false
   ): Promise<AnalysisResponse> {
     // If running in development with active backend server, attempt API call first
-    if (!isStaticOrGitHubPages) {
+    if (canTryBackend) {
       try {
         const apiUrl = '/costguard/api/analyze';
         const res = await fetch(apiUrl, {
@@ -116,7 +124,7 @@ export const api = {
     command: string,
     planContent?: any
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    if (!isStaticOrGitHubPages) {
+    if (canTryBackend) {
       try {
         const res = await fetch('/costguard/api/cli/run', {
           method: 'POST',
@@ -142,7 +150,7 @@ export const api = {
   },
 
   async getCacheStats(): Promise<CacheStatsResponse> {
-    if (!isStaticOrGitHubPages) {
+    if (canTryBackend) {
       try {
         const res = await fetch('/costguard/api/cache/stats').catch(() => fetch('/api/cache/stats'));
         if (res && res.ok) {
@@ -158,7 +166,7 @@ export const api = {
   },
 
   async clearCache(): Promise<{ status: string; deleted: number }> {
-    if (!isStaticOrGitHubPages) {
+    if (canTryBackend) {
       try {
         const res = await fetch('/costguard/api/cache', { method: 'DELETE' }).catch(() =>
           fetch('/api/cache', { method: 'DELETE' })
@@ -181,7 +189,7 @@ export const api = {
     region: string = 'eastus',
     currency: string = 'INR'
   ): Promise<SimulationResult> {
-    if (!isStaticOrGitHubPages) {
+    if (canTryBackend) {
       try {
         const res = await fetch('/costguard/api/simulate', {
           method: 'POST',
@@ -217,7 +225,7 @@ export const api = {
   },
 
   async queryAdvisor(analysisData: any, promptContext?: string): Promise<any> {
-    if (!isStaticOrGitHubPages) {
+    if (canTryBackend) {
       try {
         const res = await fetch('/costguard/api/advisor', {
           method: 'POST',

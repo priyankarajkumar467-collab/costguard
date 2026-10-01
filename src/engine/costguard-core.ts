@@ -236,7 +236,11 @@ export function parseTerraformPlan(planData: any): ParsedResourceChange[] {
     throw new Error('Terraform plan content must be a valid JSON object');
   }
 
-  const resourceChanges: any[] = root.resource_changes || [];
+  if (!root.resource_changes || !Array.isArray(root.resource_changes)) {
+    throw new Error("Invalid Terraform plan schema: missing 'resource_changes' array (exit code 2)");
+  }
+
+  const resourceChanges: any[] = root.resource_changes;
   const parsedList: ParsedResourceChange[] = [];
 
   for (const rc of resourceChanges) {

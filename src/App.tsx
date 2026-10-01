@@ -40,7 +40,10 @@ export default function App() {
           const defaultPlan = plans.find((p) => p.filename === 'plan_create.json') || plans[0];
           setSelectedPlanFilename(defaultPlan.filename);
           const contentObj = await api.getPlanContent(defaultPlan.filename);
-          const jsonText = JSON.stringify(contentObj.content, null, 2);
+          const jsonText =
+            typeof contentObj.content === 'string'
+              ? contentObj.content
+              : JSON.stringify(contentObj.content, null, 2);
           setRawPlanJson(jsonText);
 
           // Run initial analysis automatically in INR
@@ -57,7 +60,10 @@ export default function App() {
     setSelectedPlanFilename(filename);
     try {
       const contentObj = await api.getPlanContent(filename);
-      const jsonText = JSON.stringify(contentObj.content, null, 2);
+      const jsonText =
+        typeof contentObj.content === 'string'
+          ? contentObj.content
+          : JSON.stringify(contentObj.content, null, 2);
       setRawPlanJson(jsonText);
       runPlanAnalysis(jsonText, maxIncrease);
     } catch (err: any) {
@@ -69,7 +75,12 @@ export default function App() {
     setIsAnalyzing(true);
     setErrorMessage(null);
     try {
-      const parsed = JSON.parse(planString);
+      let parsed: any;
+      try {
+        parsed = JSON.parse(planString);
+      } catch (jsonErr: any) {
+        throw new Error(`Invalid JSON syntax in Terraform plan: ${jsonErr.message}`);
+      }
       const result = await api.analyzePlan(parsed, budget, 'INR', false);
       setAnalysis(result);
     } catch (err: any) {
