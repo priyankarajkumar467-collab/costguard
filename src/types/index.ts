@@ -2,6 +2,7 @@ export type TabType =
   | 'overview'
   | 'analyzer'
   | 'impact'
+  | 'compare'
   | 'settings';
 
 export interface ResourceCostDetail {

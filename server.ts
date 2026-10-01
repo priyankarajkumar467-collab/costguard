@@ -26,6 +26,18 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
 
+  // Gracefully handle malformed JSON in HTTP body with JSON response (exit code 2)
+  app.use((err: any, _req: Request, res: Response, next: any) => {
+    if (err instanceof SyntaxError && 'body' in err) {
+      return res.status(400).json({
+        error: `Malformed JSON syntax in plan payload: ${err.message}`,
+        raw_stderr: `Malformed JSON syntax in plan payload: ${err.message}`,
+        exitCode: 2,
+      });
+    }
+    next();
+  });
+
   // Pure TypeScript CostGuard Execution (No python3 subprocess dependency)
   async function runCostGuardInProcess(
     args: string[],

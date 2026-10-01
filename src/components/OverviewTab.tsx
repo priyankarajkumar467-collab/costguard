@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   XCircle,
   Info,
+  Scale,
+  ArrowRight,
 } from 'lucide-react';
 import { AnalysisResponse, TabType } from '../types';
 import { formatINR } from '../utils/currency';
@@ -188,6 +190,28 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </span>
           </div>
         </div>
+      </div>
+
+      {/* Quick Compare Action Banner */}
+      <div className="mt-5 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-lg shadow-black/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <Scale className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-white">Compare Alternative Execution Plans</h4>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Evaluate side-by-side cost variance and policy compliance across different architecture plans.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => onNavigateTab('compare')}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow transition active:scale-95 whitespace-nowrap self-end sm:self-center"
+        >
+          <span>Open Plan Compare</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   );

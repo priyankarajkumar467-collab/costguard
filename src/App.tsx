@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   FileCode,
   Layers,
+  Scale,
   Settings,
   AlertCircle,
 } from 'lucide-react';
@@ -11,6 +12,7 @@ import { Header } from './components/Header';
 import { OverviewTab } from './components/OverviewTab';
 import { PlanAnalyzerTab } from './components/PlanAnalyzerTab';
 import { CostImpactTab } from './components/CostImpactTab';
+import { CompareTab } from './components/CompareTab';
 import { SettingsTab } from './components/SettingsTab';
 import {
   TabType,
@@ -88,6 +90,7 @@ export default function App() {
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'analyzer', label: 'Plan Analysis', icon: FileCode },
     { id: 'impact', label: 'Cost Impact', icon: Layers },
+    { id: 'compare', label: 'Compare', icon: Scale },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -175,6 +178,15 @@ export default function App() {
         {activeTab === 'impact' && (
           <CostImpactTab
             analysis={analysis}
+          />
+        )}
+
+        {activeTab === 'compare' && (
+          <CompareTab
+            samplePlans={samplePlans}
+            currentPlanFilename={selectedPlanFilename}
+            currentAnalysis={analysis}
+            maxIncrease={maxIncrease}
           />
         )}
 
